@@ -1,0 +1,19 @@
+{
+  "devices": [
+    {
+      "hostname": "Air-Test-Lab",
+      "firmwareVersion": "1.0.1",
+      "macAddress": "DC:B4:D9:3A:62:80",
+      "wifiSignalStrength": -47,
+      "ipAddress": "192.168.0.115",
+      "lastHeartbeat": 1781596693686,
+      "hasUpdate": false,
+      "status": "Online",
+      "projectName": "Air-Controller"
+    }
+  ],
+  "projects": [
+    "ALL DEVICES",
+    "Air-Controller"
+  ]
+}

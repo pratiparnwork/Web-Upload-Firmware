@@ -1,5 +1,6 @@
-import fs from 'fs';
-import path from 'path';
+import { Redis } from '@upstash/redis';
+
+const kv = Redis.fromEnv();
 
 export interface Device {
   hostname: string;
@@ -11,53 +12,43 @@ export interface Device {
   hasUpdate: boolean;
   status: 'Online' | 'Offline' | 'Flashing';
   projectName: string;
+  firmwareUrl?: string;
 }
 
-const DB_FILE = path.join(process.cwd(), 'database.json');
+interface DatabaseData {
+  devices: Device[];
+  projects: string[];
+}
+
+const DB_KEY = 'air-ir-remote-db';
 
 class Database {
-  private devices: Map<string, Device> = new Map();
-  private projects: Set<string> = new Set(['ALL DEVICES']);
-
-  constructor() {
-    this.loadFromFile();
-  }
-
-  private loadFromFile() {
+  private async getData(): Promise<DatabaseData> {
     try {
-      if (fs.existsSync(DB_FILE)) {
-        const data = fs.readFileSync(DB_FILE, 'utf-8');
-        const parsed = JSON.parse(data);
-        if (parsed.devices) {
-          parsed.devices.forEach((d: Device) => {
-            this.devices.set(d.hostname, d);
-            if (d.projectName) this.projects.add(d.projectName);
-          });
-        }
-        if (parsed.projects) {
-          parsed.projects.forEach((p: string) => this.projects.add(p));
-        }
+      const data = await kv.get<DatabaseData>(DB_KEY);
+      if (data) {
+        return data;
       }
     } catch (e) {
-      console.error("Failed to load DB file", e);
+      console.error("Failed to load DB from Vercel KV", e);
     }
+    return { devices: [], projects: ['ALL DEVICES'] };
   }
 
-  private saveToFile() {
+  private async saveData(data: DatabaseData): Promise<void> {
     try {
-      const data = {
-        devices: Array.from(this.devices.values()),
-        projects: Array.from(this.projects)
-      };
-      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+      await kv.set(DB_KEY, data);
     } catch (e) {
-      console.error("Failed to save DB file", e);
+      console.error("Failed to save DB to Vercel KV", e);
     }
   }
 
-  registerDevice(hostname: string, version: string, mac: string, signal: number, ip: string) {
-    const existing = this.devices.get(hostname);
-    this.devices.set(hostname, {
+  async registerDevice(hostname: string, version: string, mac: string, signal: number, ip: string) {
+    const data = await this.getData();
+    const existingIndex = data.devices.findIndex(d => d.hostname === hostname);
+    const existing = existingIndex >= 0 ? data.devices[existingIndex] : null;
+    
+    const newDevice: Device = {
       hostname,
       firmwareVersion: version,
       macAddress: mac,
@@ -66,89 +57,113 @@ class Database {
       lastHeartbeat: Date.now(),
       hasUpdate: existing ? existing.hasUpdate : false,
       status: 'Online',
-      projectName: existing?.projectName || 'ALL DEVICES'
-    });
-    this.saveToFile();
+      projectName: existing?.projectName || 'ALL DEVICES',
+      firmwareUrl: existing?.firmwareUrl
+    };
+
+    if (existingIndex >= 0) {
+      data.devices[existingIndex] = newDevice;
+    } else {
+      data.devices.push(newDevice);
+    }
+
+    await this.saveData(data);
   }
 
-  updateHeartbeat(hostname: string) {
-    const device = this.devices.get(hostname);
+  async updateHeartbeat(hostname: string) {
+    const data = await this.getData();
+    const device = data.devices.find(d => d.hostname === hostname);
     if (device) {
       device.lastHeartbeat = Date.now();
       if (device.status !== 'Flashing') {
         device.status = 'Online';
       }
-      // Note: We don't saveToFile on every heartbeat to save disk IO.
-      // We only save on structural changes.
+      await this.saveData(data);
     }
   }
 
-  checkUpdateStatus(hostname: string): boolean {
-    const device = this.devices.get(hostname);
+  async checkUpdateStatus(hostname: string): Promise<boolean> {
+    const data = await this.getData();
+    const device = data.devices.find(d => d.hostname === hostname);
     if (!device) return false;
     return device.hasUpdate;
   }
 
-  setUpdateStatus(hostname: string, status: boolean) {
-    const device = this.devices.get(hostname);
+  async setUpdateStatus(hostname: string, status: boolean, firmwareUrl?: string) {
+    const data = await this.getData();
+    const device = data.devices.find(d => d.hostname === hostname);
     if (device) {
       device.hasUpdate = status;
-      this.saveToFile();
+      if (firmwareUrl !== undefined) {
+        device.firmwareUrl = firmwareUrl;
+      }
+      await this.saveData(data);
     }
   }
 
-  setFlashing(hostname: string) {
-    const device = this.devices.get(hostname);
+  async setFlashing(hostname: string) {
+    const data = await this.getData();
+    const device = data.devices.find(d => d.hostname === hostname);
     if (device) {
       device.status = 'Flashing';
       device.hasUpdate = false;
-      this.saveToFile();
+      await this.saveData(data);
     }
   }
 
-  getAllDevices(): Device[] {
+  async getDevice(hostname: string): Promise<Device | undefined> {
+    const data = await this.getData();
+    return data.devices.find(d => d.hostname === hostname);
+  }
+
+  async getAllDevices(): Promise<Device[]> {
     const now = Date.now();
-    const all = Array.from(this.devices.values());
-    
+    const data = await this.getData();
     let needsSave = false;
-    all.forEach(d => {
+    
+    data.devices.forEach(d => {
       if (d.status !== 'Flashing' && now - d.lastHeartbeat > 60000 && d.status !== 'Offline') {
         d.status = 'Offline';
         needsSave = true;
       }
     });
 
-    if (needsSave) this.saveToFile();
-    return all;
+    if (needsSave) await this.saveData(data);
+    return data.devices;
   }
 
-  getAllProjects(): string[] {
-    return Array.from(this.projects);
+  async getAllProjects(): Promise<string[]> {
+    const data = await this.getData();
+    return data.projects;
   }
 
-  createProject(name: string) {
-    if (!this.projects.has(name)) {
-      this.projects.add(name);
-      this.saveToFile();
+  async createProject(name: string) {
+    const data = await this.getData();
+    if (!data.projects.includes(name)) {
+      data.projects.push(name);
+      await this.saveData(data);
     }
   }
 
-  assignToProject(hostnames: string[], projectName: string) {
-    this.createProject(projectName); // ensure it exists
-    hostnames.forEach(hostname => {
-      const device = this.devices.get(hostname);
-      if (device) {
+  async assignToProject(hostnames: string[], projectName: string) {
+    const data = await this.getData();
+    if (!data.projects.includes(projectName)) {
+      data.projects.push(projectName);
+    }
+    
+    data.devices.forEach(device => {
+      if (hostnames.includes(device.hostname)) {
         device.projectName = projectName;
       }
     });
-    this.saveToFile();
+    
+    await this.saveData(data);
   }
 
-  removeDevices(hostnames: string[]) {
-    hostnames.forEach(hostname => {
-      this.devices.delete(hostname);
-    });
-    this.saveToFile();
+  async removeDevices(hostnames: string[]) {
+    const data = await this.getData();
+    data.devices = data.devices.filter(d => !hostnames.includes(d.hostname));
+    await this.saveData(data);
   }
 }
 

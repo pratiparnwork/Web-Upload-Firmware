@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       return new NextResponse('Bad Request.', { status: 400 });
     }
 
-    db.registerDevice(hostName, firmwareVersion, macAddress, wifiSignalStrength, ipAddress);
+    await db.registerDevice(hostName, firmwareVersion, macAddress, wifiSignalStrength, ipAddress);
 
     return new NextResponse(`Registered device ${hostName} successfully.`, { status: 200 });
   } catch (error) {

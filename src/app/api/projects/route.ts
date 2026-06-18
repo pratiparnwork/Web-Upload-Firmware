@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const projects = db.getAllProjects();
+    const projects = await db.getAllProjects();
     return NextResponse.json(projects);
   } catch (error) {
     return new NextResponse('Internal Server Error', { status: 500 });

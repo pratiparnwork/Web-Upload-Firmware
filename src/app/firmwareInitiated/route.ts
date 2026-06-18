@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       return new NextResponse('Bad Request.', { status: 400 });
     }
 
-    db.setFlashing(hostName);
+    await db.setFlashing(hostName);
 
     return new NextResponse(`Firmware flashing initiated for ${hostName}`, { status: 200 });
   } catch (error) {

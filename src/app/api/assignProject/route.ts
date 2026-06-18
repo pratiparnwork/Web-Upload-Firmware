@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
-    db.assignToProject(hostnames, projectName);
+    await db.assignToProject(hostnames, projectName);
 
     return NextResponse.json({ success: true });
   } catch (error) {

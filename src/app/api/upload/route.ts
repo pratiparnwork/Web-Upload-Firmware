@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import fs from 'fs';
-import path from 'path';
-import { promisify } from 'util';
-
-const writeFile = promisify(fs.writeFile);
+import { put } from '@vercel/blob';
 
 export async function POST(req: Request) {
   try {
@@ -21,22 +17,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid hostnames array' }, { status: 400 });
     }
 
+    // Upload the file once to Vercel Blob
     const buffer = Buffer.from(await file.arrayBuffer());
-    const uploadDir = path.join(process.cwd(), 'public', 'upload');
+    const blob = await put(`firmware_${Date.now()}.bin`, buffer, {
+      access: 'public',
+    });
 
-    // Ensure upload directory exists
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
-    // Save the file for each selected hostname
+    // Save the blob URL to all selected devices
     for (const hostname of hostnames) {
-      const fileName = `${hostname}_firmware.bin`;
-      const filePath = path.join(uploadDir, fileName);
-      await writeFile(filePath, buffer);
-      
-      // Mark as having an update ready
-      db.setUpdateStatus(hostname, true);
+      await db.setUpdateStatus(hostname, true, blob.url);
     }
 
     return NextResponse.json({ success: true, message: `Update queued for ${hostnames.length} devices.` });

@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       return new NextResponse('Bad Request.', { status: 400 });
     }
 
-    db.updateHeartbeat(cleanHostName);
+    await db.updateHeartbeat(cleanHostName);
 
     return new NextResponse(`Heartbeat received from ${cleanHostName}.`, { status: 200 });
   } catch (error) {

@@ -10,7 +10,7 @@ export async function GET(req: Request) {
       return new NextResponse('Bad Request.', { status: 400 });
     }
 
-    const hasUpdate = db.checkUpdateStatus(hostName);
+    const hasUpdate = await db.checkUpdateStatus(hostName);
 
     if (hasUpdate) {
       return new NextResponse('Update Available', { status: 200 });

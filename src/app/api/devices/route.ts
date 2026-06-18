@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const devices = db.getAllDevices();
+    const devices = await db.getAllDevices();
     return NextResponse.json(devices);
   } catch (error) {
     return new NextResponse('Internal Server Error', { status: 500 });
@@ -20,7 +20,7 @@ export async function DELETE(req: Request) {
     if (!hostnames || !Array.isArray(hostnames)) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
-    db.removeDevices(hostnames);
+    await db.removeDevices(hostnames);
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

@@ -173,8 +173,8 @@ export default function Home() {
 
   if (!isLoggedIn) {
     return (
-      <main style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>
-        <div style={{ border: '2px solid var(--neon-green)', padding: '3rem', background: 'rgba(0,255,0,0.05)', width: '400px' }}>
+      <main className="login-container">
+        <div className="login-box">
           <h1 className="glow-text" style={{ fontSize: '2rem', marginBottom: '2rem', textAlign: 'center' }}>// SYSTEM_LOGIN</h1>
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div>
@@ -206,9 +206,9 @@ export default function Home() {
   }
 
   return (
-    <main style={{ display: 'flex', height: '100vh' }}>
+    <main className="app-container">
       {/* SIDEBAR */}
-      <aside style={{ width: '280px', borderRight: '2px solid var(--neon-green)', padding: '1.5rem', display: 'flex', flexDirection: 'column', background: 'rgba(0,255,0,0.02)' }}>
+      <aside className="sidebar">
         <h2 className="glow-text" style={{ fontSize: '1.5rem', marginBottom: '2rem' }}>// PROJECTS</h2>
         
         <ul style={{ listStyle: 'none', flexGrow: 1, overflowY: 'auto' }}>
@@ -248,19 +248,19 @@ export default function Home() {
       </aside>
 
       {/* MAIN CONTENT */}
-      <div style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <div className="main-content">
         <header style={{ marginBottom: '2rem', borderBottom: '2px solid var(--neon-green)', paddingBottom: '1rem' }}>
-          <h1 className="glow-text" style={{ fontSize: '2.5rem' }}>// ESP OTA COMMAND CENTER</h1>
+          <h1 className="glow-text main-title">// ESP OTA COMMAND CENTER</h1>
           <p>SYSTEM STATUS: <span style={{color: 'var(--neon-green)'}}>ACTIVE</span> | {selectedProject} ({filteredDevices.length} DEVICES)</p>
         </header>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '2rem', flexGrow: 1 }}>
-          <section>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div className="dashboard-grid">
+          <section style={{ overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
               <h2 className="glow-text-blue">&gt; FLEET_MANAGEMENT</h2>
               
               {selectedDevices.size > 0 && (
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <div className="header-actions">
                   {selectedProject === 'ALL DEVICES' && (
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                       <span>MOVE TO:</span>
@@ -283,6 +283,7 @@ export default function Home() {
               )}
             </div>
 
+            <div className="table-responsive">
             <table className="hacker-table">
               <thead>
                 <tr>
@@ -335,9 +336,10 @@ export default function Home() {
                 )}
               </tbody>
             </table>
+            </div>
           </section>
 
-          <section style={{ borderLeft: '1px solid #333', paddingLeft: '2rem' }}>
+          <section className="upload-section">
             <h2 className="glow-text-blue" style={{ marginBottom: '1rem' }}>&gt; UPLINK_PAYLOAD</h2>
             
             <div className="upload-area" onClick={() => fileInputRef.current?.click()}>

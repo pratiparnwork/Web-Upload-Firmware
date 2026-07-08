@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     await db.registerDevice(hostName, firmwareVersion, macAddress, wifiSignalStrength, ipAddress);
 
     return new NextResponse(`Registered device ${hostName} successfully.`, { status: 200 });
-  } catch (error) {
+  } catch {
     return new NextResponse('Internal Server Error', { status: 500 });
   }
 }

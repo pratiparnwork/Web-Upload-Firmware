@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const devices = await db.getAllDevices();
     return NextResponse.json(devices);
-  } catch (error) {
+  } catch {
     return new NextResponse('Internal Server Error', { status: 500 });
   }
 }
@@ -16,13 +16,28 @@ export async function GET() {
 export async function DELETE(req: Request) {
   try {
     const body = await req.json();
-    const { hostnames } = body;
-    if (!hostnames || !Array.isArray(hostnames)) {
+    const { macAddresses, hostnames } = body;
+    const selectedMacAddresses = Array.isArray(macAddresses)
+      ? macAddresses.filter((item): item is string => typeof item === 'string')
+      : [];
+    const selectedHostnames = Array.isArray(hostnames)
+      ? hostnames.filter((item): item is string => typeof item === 'string')
+      : [];
+
+    if (selectedMacAddresses.length === 0 && selectedHostnames.length === 0) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
-    await db.removeDevices(hostnames);
+
+    if (selectedMacAddresses.length > 0) {
+      await db.removeDevicesByMac(selectedMacAddresses);
+    }
+
+    if (selectedHostnames.length > 0) {
+      await db.removeDevices(selectedHostnames);
+    }
+
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

@@ -23,7 +23,7 @@ export default function Home() {
   const [projects, setProjects] = useState<string[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('ALL DEVICES');
   
-  const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
+  const [selectedMacAddresses, setSelectedMacAddresses] = useState<Set<string>>(new Set());
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -53,20 +53,21 @@ export default function Home() {
   const filteredDevices = selectedProject === 'ALL DEVICES' 
     ? devices 
     : devices.filter(d => d.projectName === selectedProject);
+  const selectedInViewCount = filteredDevices.filter(d => selectedMacAddresses.has(d.macAddress)).length;
 
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedDevices(new Set(filteredDevices.map(d => d.hostname)));
+      setSelectedMacAddresses(new Set(filteredDevices.map(d => d.macAddress)));
     } else {
-      setSelectedDevices(new Set());
+      setSelectedMacAddresses(new Set());
     }
   };
 
-  const toggleDevice = (hostname: string, checked: boolean) => {
-    const newSet = new Set(selectedDevices);
-    if (checked) newSet.add(hostname);
-    else newSet.delete(hostname);
-    setSelectedDevices(newSet);
+  const toggleDevice = (macAddress: string, checked: boolean) => {
+    const newSet = new Set(selectedMacAddresses);
+    if (checked) newSet.add(macAddress);
+    else newSet.delete(macAddress);
+    setSelectedMacAddresses(newSet);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -77,7 +78,7 @@ export default function Home() {
 
   const handleUpload = async () => {
     if (!file) return alert("Please select a firmware .bin file first.");
-    if (selectedDevices.size === 0) return alert("Please select at least one device to flash.");
+    if (selectedMacAddresses.size === 0) return alert("Please select at least one device to flash.");
 
     const pass = prompt("AUTHORIZATION REQUIRED: Enter admin password to initiate flash");
     if (pass !== "admin") {
@@ -88,20 +89,20 @@ export default function Home() {
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("hostnames", JSON.stringify(Array.from(selectedDevices)));
+    formData.append("macAddresses", JSON.stringify(Array.from(selectedMacAddresses)));
 
     try {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       if (res.ok) {
         alert("Upload successful! Selected devices will now update.");
-        setSelectedDevices(new Set());
+        setSelectedMacAddresses(new Set());
         setFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
       } else {
         const err = await res.json();
         alert("Error: " + err.error);
       }
-    } catch (e) {
+    } catch {
       alert("Upload failed.");
     } finally {
       setUploading(false);
@@ -109,7 +110,7 @@ export default function Home() {
   };
 
   const assignToProject = async (projName: string) => {
-    if (selectedDevices.size === 0) return alert("Select devices to assign first.");
+    if (selectedMacAddresses.size === 0) return alert("Select devices to assign first.");
     const targetProject = projName.trim();
     if (!targetProject) return;
 
@@ -118,27 +119,27 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          hostnames: Array.from(selectedDevices),
+          macAddresses: Array.from(selectedMacAddresses),
           projectName: targetProject
         })
       });
       if (res.ok) {
         setNewProjectName("");
-        setSelectedDevices(new Set());
+        setSelectedMacAddresses(new Set());
         // force immediate refresh
         const [devRes, projRes] = await Promise.all([fetch('/api/devices'), fetch('/api/projects')]);
         if (devRes.ok) setDevices(await devRes.json());
         if (projRes.ok) setProjects(await projRes.json());
       }
-    } catch (e) {
+    } catch {
       alert("Failed to assign project");
     }
   };
 
   const deleteDevices = async () => {
-    if (selectedDevices.size === 0) return alert("Select devices to delete first.");
+    if (selectedMacAddresses.size === 0) return alert("Select devices to delete first.");
     
-    const confirmDelete = confirm(`WARNING: Are you sure you want to delete ${selectedDevices.size} device(s)? This action cannot be undone.`);
+    const confirmDelete = confirm(`WARNING: Are you sure you want to delete ${selectedMacAddresses.size} device(s)? This action cannot be undone.`);
     if (!confirmDelete) return;
 
     try {
@@ -146,18 +147,18 @@ export default function Home() {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          hostnames: Array.from(selectedDevices)
+          macAddresses: Array.from(selectedMacAddresses)
         })
       });
       if (res.ok) {
-        setSelectedDevices(new Set());
+        setSelectedMacAddresses(new Set());
         // force immediate refresh
         const devRes = await fetch('/api/devices');
         if (devRes.ok) setDevices(await devRes.json());
       } else {
         alert("Failed to delete devices");
       }
-    } catch (e) {
+    } catch {
       alert("Error deleting devices");
     }
   };
@@ -175,7 +176,7 @@ export default function Home() {
     return (
       <main className="login-container">
         <div className="login-box">
-          <h1 className="glow-text" style={{ fontSize: '2rem', marginBottom: '2rem', textAlign: 'center' }}>// SYSTEM_LOGIN</h1>
+          <h1 className="glow-text" style={{ fontSize: '2rem', marginBottom: '2rem', textAlign: 'center' }}>{'// SYSTEM_LOGIN'}</h1>
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem' }}>USERNAME:</label>
@@ -209,13 +210,13 @@ export default function Home() {
     <main className="app-container">
       {/* SIDEBAR */}
       <aside className="sidebar">
-        <h2 className="glow-text" style={{ fontSize: '1.5rem', marginBottom: '2rem' }}>// PROJECTS</h2>
+        <h2 className="glow-text" style={{ fontSize: '1.5rem', marginBottom: '2rem' }}>{'// PROJECTS'}</h2>
         
         <ul style={{ listStyle: 'none', flexGrow: 1, overflowY: 'auto' }}>
           {projects.map(p => (
             <li key={p} style={{ marginBottom: '0.5rem' }}>
               <button 
-                onClick={() => { setSelectedProject(p); setSelectedDevices(new Set()); }}
+                onClick={() => { setSelectedProject(p); setSelectedMacAddresses(new Set()); }}
                 style={{
                   width: '100%', textAlign: 'left', padding: '0.8rem', background: selectedProject === p ? 'var(--neon-green)' : 'transparent',
                   color: selectedProject === p ? '#000' : 'var(--neon-green)',
@@ -250,7 +251,7 @@ export default function Home() {
       {/* MAIN CONTENT */}
       <div className="main-content">
         <header style={{ marginBottom: '2rem', borderBottom: '2px solid var(--neon-green)', paddingBottom: '1rem' }}>
-          <h1 className="glow-text main-title">// ESP OTA COMMAND CENTER</h1>
+          <h1 className="glow-text main-title">{'// ESP OTA COMMAND CENTER'}</h1>
           <p>SYSTEM STATUS: <span style={{color: 'var(--neon-green)'}}>ACTIVE</span> | {selectedProject} ({filteredDevices.length} DEVICES)</p>
         </header>
 
@@ -259,7 +260,7 @@ export default function Home() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
               <h2 className="glow-text-blue">&gt; FLEET_MANAGEMENT</h2>
               
-              {selectedDevices.size > 0 && (
+              {selectedMacAddresses.size > 0 && (
                 <div className="header-actions">
                   {selectedProject === 'ALL DEVICES' && (
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -291,7 +292,7 @@ export default function Home() {
                     <input 
                       type="checkbox" 
                       onChange={(e) => toggleSelectAll(e.target.checked)}
-                      checked={filteredDevices.length > 0 && selectedDevices.size === filteredDevices.length}
+                      checked={filteredDevices.length > 0 && selectedInViewCount === filteredDevices.length}
                     />
                   </th>
                   <th>STATUS</th>
@@ -306,12 +307,12 @@ export default function Home() {
               </thead>
               <tbody>
                 {filteredDevices.map(d => (
-                  <tr key={d.hostname}>
+                  <tr key={d.macAddress}>
                     <td>
                       <input 
                         type="checkbox" 
-                        checked={selectedDevices.has(d.hostname)}
-                        onChange={(e) => toggleDevice(d.hostname, e.target.checked)}
+                        checked={selectedMacAddresses.has(d.macAddress)}
+                        onChange={(e) => toggleDevice(d.macAddress, e.target.checked)}
                       />
                     </td>
                     <td>
@@ -359,14 +360,14 @@ export default function Home() {
 
             <div style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div style={{ padding: '1rem', border: '1px solid #333', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-                <p>TARGETS SELECTED: <span className="glow-text">{selectedDevices.size}</span></p>
+                <p>TARGETS SELECTED: <span className="glow-text">{selectedMacAddresses.size}</span></p>
                 <p style={{fontSize: '0.8rem', opacity: 0.7, marginTop: '0.5rem'}}>Warning: Flashing will only apply to selected targets within the current view.</p>
               </div>
               
               <button 
                 className="btn-hacker" 
                 onClick={handleUpload} 
-                disabled={uploading || selectedDevices.size === 0 || !file}
+                disabled={uploading || selectedMacAddresses.size === 0 || !file}
                 style={{ width: '100%', padding: '1rem', fontSize: '1.2rem', fontWeight: 'bold' }}
               >
                 {uploading ? 'UPLOADING...' : 'INITIATE FLASH'}

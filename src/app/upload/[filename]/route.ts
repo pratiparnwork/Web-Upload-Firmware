@@ -8,13 +8,15 @@ export async function GET(
   try {
     const { filename } = await context.params;
 
-    // ESP expects `/upload/HOSTNAME_firmware.bin`
+    // ESP can request `/upload/HOSTNAME_firmware.bin` or `/upload/MAC_firmware.bin`.
     if (!filename.endsWith('_firmware.bin')) {
       return new NextResponse('Invalid firmware filename.', { status: 400 });
     }
 
-    const hostname = filename.replace('_firmware.bin', '');
-    const device = await db.getDevice(hostname);
+    const { searchParams } = new URL(req.url);
+    const identifier = decodeURIComponent(filename.replace('_firmware.bin', ''));
+    const macAddress = searchParams.get('macAddress') || searchParams.get('mac') || searchParams.get('eui') || identifier;
+    const device = await db.getDevice({ hostname: identifier, macAddress });
 
     if (!device || !device.firmwareUrl) {
       return new NextResponse('Firmware not found or no update available.', { status: 404 });

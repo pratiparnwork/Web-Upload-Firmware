@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const projects = await db.getAllProjects();
     return NextResponse.json(projects);
-  } catch (error) {
+  } catch {
     return new NextResponse('Internal Server Error', { status: 500 });
   }
 }

@@ -4,14 +4,14 @@ import { db } from '@/lib/db';
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const hostName = searchParams.get('hostName');
+    const hostName = searchParams.get('hostName') || searchParams.get('hostname');
+    const macAddress = searchParams.get('macAddress') || searchParams.get('mac') || searchParams.get('eui');
 
-    if (!hostName) {
+    if (!hostName && !macAddress) {
       return new NextResponse('Bad Request.', { status: 400 });
     }
 
-    // ดึงข้อมูลอุปกรณ์จาก KV
-    const device = await db.getDevice(hostName);
+    const hasUpdate = await db.checkUpdateStatus({ hostname: hostName, macAddress });
 
     // หากอุปกรณ์มีการอัปเดตและมี URL ให้ส่ง URL กลับ
     if (device && device.hasUpdate) {
@@ -21,10 +21,7 @@ export async function GET(req: Request) {
       // fallback – ส่งข้อความเดิม
       return new NextResponse('Update Available', { status: 200 });
     }
-
-    // ไม่มีอัปเดต
-    return new NextResponse('No Update', { status: 200 });
-  } catch (error) {
+  } catch {
     return new NextResponse('Internal Server Error', { status: 500 });
   }
 }

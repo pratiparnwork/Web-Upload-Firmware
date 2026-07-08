@@ -20,9 +20,54 @@ interface DatabaseData {
   projects: string[];
 }
 
+type DeviceIdentifier = {
+  hostname?: string | null;
+  macAddress?: string | null;
+};
+
 const DB_KEY = 'air-ir-remote-db';
 
+const normalizeMacAddress = (macAddress?: string | null) => (
+  macAddress?.trim().toUpperCase() || ''
+);
+
 class Database {
+  private normalizeIdentifier(identifier: string | DeviceIdentifier): DeviceIdentifier {
+    return typeof identifier === 'string' ? { hostname: identifier } : identifier;
+  }
+
+  private findDeviceIndex(data: DatabaseData, identifier: string | DeviceIdentifier): number {
+    const normalizedIdentifier = this.normalizeIdentifier(identifier);
+    const macAddress = normalizeMacAddress(normalizedIdentifier.macAddress);
+
+    if (macAddress) {
+      const byMac = data.devices.findIndex(d => normalizeMacAddress(d.macAddress) === macAddress);
+      if (byMac >= 0) return byMac;
+    }
+
+    const hostname = normalizedIdentifier.hostname?.trim();
+    if (hostname) {
+      return data.devices.findIndex(d => d.hostname === hostname);
+    }
+
+    return -1;
+  }
+
+  private findDevice(data: DatabaseData, identifier: string | DeviceIdentifier): Device | undefined {
+    const index = this.findDeviceIndex(data, identifier);
+    return index >= 0 ? data.devices[index] : undefined;
+  }
+
+  private createMacAddressSet(macAddresses: string[]): Set<string> {
+    return new Set(macAddresses.map(normalizeMacAddress).filter(Boolean));
+  }
+
+  private ensureProject(data: DatabaseData, projectName: string) {
+    if (!data.projects.includes(projectName)) {
+      data.projects.push(projectName);
+    }
+  }
+
   private async getData(): Promise<DatabaseData> {
     try {
       const data = await kv.get<DatabaseData>(DB_KEY);
@@ -45,13 +90,14 @@ class Database {
 
   async registerDevice(hostname: string, version: string, mac: string, signal: number, ip: string) {
     const data = await this.getData();
-    const existingIndex = data.devices.findIndex(d => d.hostname === hostname);
+    const macAddress = normalizeMacAddress(mac);
+    const existingIndex = this.findDeviceIndex(data, { macAddress });
     const existing = existingIndex >= 0 ? data.devices[existingIndex] : null;
     
     const newDevice: Device = {
       hostname,
       firmwareVersion: version,
-      macAddress: mac,
+      macAddress,
       wifiSignalStrength: signal,
       ipAddress: ip,
       lastHeartbeat: Date.now(),
@@ -70,9 +116,9 @@ class Database {
     await this.saveData(data);
   }
 
-  async updateHeartbeat(hostname: string) {
+  async updateHeartbeat(identifier: string | DeviceIdentifier) {
     const data = await this.getData();
-    const device = data.devices.find(d => d.hostname === hostname);
+    const device = this.findDevice(data, identifier);
     if (device) {
       device.lastHeartbeat = Date.now();
       if (device.status !== 'Flashing') {
@@ -82,16 +128,16 @@ class Database {
     }
   }
 
-  async checkUpdateStatus(hostname: string): Promise<boolean> {
+  async checkUpdateStatus(identifier: string | DeviceIdentifier): Promise<boolean> {
     const data = await this.getData();
-    const device = data.devices.find(d => d.hostname === hostname);
+    const device = this.findDevice(data, identifier);
     if (!device) return false;
     return device.hasUpdate;
   }
 
-  async setUpdateStatus(hostname: string, status: boolean, firmwareUrl?: string) {
+  async setUpdateStatus(identifier: string | DeviceIdentifier, status: boolean, firmwareUrl?: string) {
     const data = await this.getData();
-    const device = data.devices.find(d => d.hostname === hostname);
+    const device = this.findDevice(data, identifier);
     if (device) {
       device.hasUpdate = status;
       if (firmwareUrl !== undefined) {
@@ -101,9 +147,9 @@ class Database {
     }
   }
 
-  async setFlashing(hostname: string) {
+  async setFlashing(identifier: string | DeviceIdentifier) {
     const data = await this.getData();
-    const device = data.devices.find(d => d.hostname === hostname);
+    const device = this.findDevice(data, identifier);
     if (device) {
       device.status = 'Flashing';
       device.hasUpdate = false;
@@ -111,9 +157,9 @@ class Database {
     }
   }
 
-  async getDevice(hostname: string): Promise<Device | undefined> {
+  async getDevice(identifier: string | DeviceIdentifier): Promise<Device | undefined> {
     const data = await this.getData();
-    return data.devices.find(d => d.hostname === hostname);
+    return this.findDevice(data, identifier);
   }
 
   async getAllDevices(): Promise<Device[]> {
@@ -139,17 +185,13 @@ class Database {
 
   async createProject(name: string) {
     const data = await this.getData();
-    if (!data.projects.includes(name)) {
-      data.projects.push(name);
-      await this.saveData(data);
-    }
+    this.ensureProject(data, name);
+    await this.saveData(data);
   }
 
   async assignToProject(hostnames: string[], projectName: string) {
     const data = await this.getData();
-    if (!data.projects.includes(projectName)) {
-      data.projects.push(projectName);
-    }
+    this.ensureProject(data, projectName);
     
     data.devices.forEach(device => {
       if (hostnames.includes(device.hostname)) {
@@ -160,9 +202,30 @@ class Database {
     await this.saveData(data);
   }
 
+  async assignToProjectByMac(macAddresses: string[], projectName: string) {
+    const data = await this.getData();
+    const macAddressSet = this.createMacAddressSet(macAddresses);
+    this.ensureProject(data, projectName);
+
+    data.devices.forEach(device => {
+      if (macAddressSet.has(normalizeMacAddress(device.macAddress))) {
+        device.projectName = projectName;
+      }
+    });
+
+    await this.saveData(data);
+  }
+
   async removeDevices(hostnames: string[]) {
     const data = await this.getData();
     data.devices = data.devices.filter(d => !hostnames.includes(d.hostname));
+    await this.saveData(data);
+  }
+
+  async removeDevicesByMac(macAddresses: string[]) {
+    const data = await this.getData();
+    const macAddressSet = this.createMacAddressSet(macAddresses);
+    data.devices = data.devices.filter(d => !macAddressSet.has(normalizeMacAddress(d.macAddress)));
     await this.saveData(data);
   }
 }

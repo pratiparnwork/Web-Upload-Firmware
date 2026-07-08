@@ -11,16 +11,18 @@ export async function GET(req: Request) {
       return new NextResponse('Bad Request.', { status: 400 });
     }
 
-    const hasUpdate = await db.checkUpdateStatus({ hostname: hostName, macAddress });
+    const device = await db.getDevice({ hostname: hostName, macAddress });
 
     // หากอุปกรณ์มีการอัปเดตและมี URL ให้ส่ง URL กลับ
-    if (device && device.hasUpdate) {
+    if (device?.hasUpdate) {
       if (device.firmwareUrl) {
         return new NextResponse(device.firmwareUrl, { status: 200 });
       }
       // fallback – ส่งข้อความเดิม
       return new NextResponse('Update Available', { status: 200 });
     }
+
+    return new NextResponse('No Update', { status: 200 });
   } catch {
     return new NextResponse('Internal Server Error', { status: 500 });
   }

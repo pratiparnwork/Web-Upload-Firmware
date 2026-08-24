@@ -19,7 +19,10 @@ export async function POST(req: Request) {
       return new NextResponse('Bad Request.', { status: 400 });
     }
 
-    await db.updateHeartbeat({ hostname: hostName, macAddress });
+    const updated = await db.updateHeartbeat({ hostname: hostName, macAddress });
+    if (!updated) {
+      return new NextResponse('Device not found.', { status: 404 });
+    }
 
     return new NextResponse(`Heartbeat received from ${macAddress || hostName}.`, { status: 200 });
   } catch {

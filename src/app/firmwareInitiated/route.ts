@@ -11,7 +11,10 @@ export async function POST(req: Request) {
       return new NextResponse('Bad Request.', { status: 400 });
     }
 
-    await db.setFlashing({ hostname: hostName, macAddress });
+    const updated = await db.setFlashing({ hostname: hostName, macAddress });
+    if (!updated) {
+      return new NextResponse('Device not found.', { status: 404 });
+    }
 
     return new NextResponse(`Firmware flashing initiated for ${macAddress || hostName}`, { status: 200 });
   } catch {

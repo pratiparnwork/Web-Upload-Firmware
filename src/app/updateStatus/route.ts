@@ -12,6 +12,9 @@ export async function GET(req: Request) {
     }
 
     const device = await db.getDevice({ hostname: hostName, macAddress });
+    if (!device) {
+      return new NextResponse('Device not found.', { status: 404 });
+    }
 
     // หากอุปกรณ์มีการอัปเดตและมี URL ให้ส่ง URL กลับ
     if (device?.hasUpdate) {

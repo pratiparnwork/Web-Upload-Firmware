@@ -41,8 +41,9 @@ class Database {
     const macAddress = normalizeMacAddress(normalizedIdentifier.macAddress);
 
     if (macAddress) {
-      const byMac = data.devices.findIndex(d => normalizeMacAddress(d.macAddress) === macAddress);
-      if (byMac >= 0) return byMac;
+      // MAC/EUI is the unique device identity. Do not fall back to a
+      // duplicate hostname when a MAC was supplied but is not registered.
+      return data.devices.findIndex(d => normalizeMacAddress(d.macAddress) === macAddress);
     }
 
     const hostname = normalizedIdentifier.hostname?.trim();
@@ -76,6 +77,7 @@ class Database {
       }
     } catch (e) {
       console.error("Failed to load DB from Vercel KV", e);
+      throw e;
     }
     return { devices: [], projects: ['ALL DEVICES'] };
   }
@@ -85,6 +87,9 @@ class Database {
       await kv.set(DB_KEY, data);
     } catch (e) {
       console.error("Failed to save DB to Vercel KV", e);
+      // Do not return a successful API response when the heartbeat or
+      // registration was not actually persisted.
+      throw e;
     }
   }
 
@@ -116,16 +121,19 @@ class Database {
     await this.saveData(data);
   }
 
-  async updateHeartbeat(identifier: string | DeviceIdentifier) {
+  async updateHeartbeat(identifier: string | DeviceIdentifier): Promise<boolean> {
     const data = await this.getData();
     const device = this.findDevice(data, identifier);
-    if (device) {
-      device.lastHeartbeat = Date.now();
-      if (device.status !== 'Flashing') {
-        device.status = 'Online';
-      }
-      await this.saveData(data);
+    if (!device) {
+      return false;
     }
+
+    device.lastHeartbeat = Date.now();
+    if (device.status !== 'Flashing') {
+      device.status = 'Online';
+    }
+    await this.saveData(data);
+    return true;
   }
 
   async checkUpdateStatus(identifier: string | DeviceIdentifier): Promise<boolean> {
@@ -147,14 +155,17 @@ class Database {
     }
   }
 
-  async setFlashing(identifier: string | DeviceIdentifier) {
+  async setFlashing(identifier: string | DeviceIdentifier): Promise<boolean> {
     const data = await this.getData();
     const device = this.findDevice(data, identifier);
-    if (device) {
-      device.status = 'Flashing';
-      device.hasUpdate = false;
-      await this.saveData(data);
+    if (!device) {
+      return false;
     }
+
+    device.status = 'Flashing';
+    device.hasUpdate = false;
+    await this.saveData(data);
+    return true;
   }
 
   async getDevice(identifier: string | DeviceIdentifier): Promise<Device | undefined> {

@@ -93,6 +93,20 @@ class Database {
     }
   }
 
+  private markOfflineDevices(data: DatabaseData): boolean {
+    const now = Date.now();
+    let needsSave = false;
+
+    data.devices.forEach(d => {
+      if (d.status !== 'Flashing' && now - d.lastHeartbeat > 60000 && d.status !== 'Offline') {
+        d.status = 'Offline';
+        needsSave = true;
+      }
+    });
+
+    return needsSave;
+  }
+
   async registerDevice(hostname: string, version: string, mac: string, signal: number, ip: string) {
     const data = await this.getData();
     const macAddress = normalizeMacAddress(mac);
@@ -174,19 +188,19 @@ class Database {
   }
 
   async getAllDevices(): Promise<Device[]> {
-    const now = Date.now();
     const data = await this.getData();
-    let needsSave = false;
-    
-    data.devices.forEach(d => {
-      if (d.status !== 'Flashing' && now - d.lastHeartbeat > 60000 && d.status !== 'Offline') {
-        d.status = 'Offline';
-        needsSave = true;
-      }
-    });
-
-    if (needsSave) await this.saveData(data);
+    if (this.markOfflineDevices(data)) await this.saveData(data);
     return data.devices;
+  }
+
+  async getDashboard(): Promise<{ devices: Device[]; projects: string[] }> {
+    const data = await this.getData();
+    if (this.markOfflineDevices(data)) await this.saveData(data);
+
+    return {
+      devices: data.devices,
+      projects: data.projects
+    };
   }
 
   async getAllProjects(): Promise<string[]> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 
 export interface Device {
   hostname: string;
@@ -12,6 +12,11 @@ export interface Device {
   hasUpdate: boolean;
   status: 'Online' | 'Offline' | 'Flashing';
   projectName: string;
+}
+
+interface DashboardData {
+  devices: Device[];
+  projects: string[];
 }
 
 export default function Home() {
@@ -26,29 +31,56 @@ export default function Home() {
   const [selectedMacAddresses, setSelectedMacAddresses] = useState<Set<string>>(new Set());
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [newProjectName, setNewProjectName] = useState("");
 
-  // Poll devices & projects
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const response = await fetch('/api/dashboard', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Dashboard request failed: ${response.status}`);
+
+      const data: DashboardData = await response.json();
+      setDevices(data.devices);
+      setProjects(data.projects);
+    } catch (error) {
+      console.error("Failed to fetch dashboard data", error);
+    }
+  }, []);
+
+  const refreshDashboard = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchDashboard();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchDashboard]);
+
+  // Load the dashboard when the user starts using it or returns to the tab.
   useEffect(() => {
-    const fetchInfo = async () => {
-      try {
-        const [devRes, projRes] = await Promise.all([
-          fetch('/api/devices'),
-          fetch('/api/projects')
-        ]);
-        if (devRes.ok) setDevices(await devRes.json());
-        if (projRes.ok) setProjects(await projRes.json());
-      } catch (err) {
-        console.error("Failed to fetch data", err);
+    if (!isLoggedIn) return;
+
+    let initialLoad: number | undefined;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchDashboard();
       }
     };
-    
-    fetchInfo();
-    const interval = setInterval(fetchInfo, 3000);
-    return () => clearInterval(interval);
-  }, []);
+
+    if (document.visibilityState === 'visible') {
+      initialLoad = window.setTimeout(() => {
+        void fetchDashboard();
+      }, 0);
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (initialLoad !== undefined) window.clearTimeout(initialLoad);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchDashboard, isLoggedIn]);
 
   const filteredDevices = selectedProject === 'ALL DEVICES' 
     ? devices 
@@ -126,10 +158,8 @@ export default function Home() {
       if (res.ok) {
         setNewProjectName("");
         setSelectedMacAddresses(new Set());
-        // force immediate refresh
-        const [devRes, projRes] = await Promise.all([fetch('/api/devices'), fetch('/api/projects')]);
-        if (devRes.ok) setDevices(await devRes.json());
-        if (projRes.ok) setProjects(await projRes.json());
+        // Refresh both devices and projects after a project mutation.
+        await refreshDashboard();
       }
     } catch {
       alert("Failed to assign project");
@@ -152,9 +182,8 @@ export default function Home() {
       });
       if (res.ok) {
         setSelectedMacAddresses(new Set());
-        // force immediate refresh
-        const devRes = await fetch('/api/devices');
-        if (devRes.ok) setDevices(await devRes.json());
+        // Refresh the dashboard after deleting devices.
+        await refreshDashboard();
       } else {
         alert("Failed to delete devices");
       }
@@ -251,8 +280,20 @@ export default function Home() {
       {/* MAIN CONTENT */}
       <div className="main-content">
         <header style={{ marginBottom: '2rem', borderBottom: '2px solid var(--neon-green)', paddingBottom: '1rem' }}>
-          <h1 className="glow-text main-title">{'// ESP OTA COMMAND CENTER'}</h1>
-          <p>SYSTEM STATUS: <span style={{color: 'var(--neon-green)'}}>ACTIVE</span> | {selectedProject} ({filteredDevices.length} DEVICES)</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <h1 className="glow-text main-title">{'// ESP OTA COMMAND CENTER'}</h1>
+              <p>SYSTEM STATUS: <span style={{color: 'var(--neon-green)'}}>ACTIVE</span> | {selectedProject} ({filteredDevices.length} DEVICES)</p>
+            </div>
+            <button
+              className="btn-hacker btn-hacker-blue"
+              onClick={() => void refreshDashboard()}
+              disabled={refreshing}
+              style={{ padding: '0.7rem 1rem', fontWeight: 'bold' }}
+            >
+              {refreshing ? 'REFRESHING...' : 'REFRESH'}
+            </button>
+          </div>
         </header>
 
         <div className="dashboard-grid">

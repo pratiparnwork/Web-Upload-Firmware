@@ -31,6 +31,7 @@ export default function Home() {
   const [selectedMacAddresses, setSelectedMacAddresses] = useState<Set<string>>(new Set());
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [newProjectName, setNewProjectName] = useState("");
@@ -48,55 +49,38 @@ export default function Home() {
     }
   }, []);
 
-  const fetchDevices = useCallback(async () => {
+  const refreshDashboard = useCallback(async () => {
+    setRefreshing(true);
     try {
-      const response = await fetch('/api/devices', { cache: 'no-store' });
-      if (!response.ok) throw new Error(`Devices request failed: ${response.status}`);
-
-      setDevices(await response.json());
-    } catch (error) {
-      console.error("Failed to fetch devices", error);
+      await fetchDashboard();
+    } finally {
+      setRefreshing(false);
     }
-  }, []);
+  }, [fetchDashboard]);
 
-  // Load the dashboard once when the user starts using it, then poll devices only.
+  // Load the dashboard when the user starts using it or returns to the tab.
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    let interval: ReturnType<typeof setInterval> | undefined;
-
-    const startPolling = () => {
-      if (document.visibilityState !== 'visible' || interval) return;
-
-      void fetchDashboard();
-      interval = setInterval(() => {
-        void fetchDevices();
-      }, 3000);
-    };
-
-    const stopPolling = () => {
-      if (!interval) return;
-
-      clearInterval(interval);
-      interval = undefined;
-    };
-
+    let initialLoad: number | undefined;
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        startPolling();
-      } else {
-        stopPolling();
+        void fetchDashboard();
       }
     };
 
-    startPolling();
+    if (document.visibilityState === 'visible') {
+      initialLoad = window.setTimeout(() => {
+        void fetchDashboard();
+      }, 0);
+    }
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      stopPolling();
+      if (initialLoad !== undefined) window.clearTimeout(initialLoad);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [fetchDashboard, fetchDevices, isLoggedIn]);
+  }, [fetchDashboard, isLoggedIn]);
 
   const filteredDevices = selectedProject === 'ALL DEVICES' 
     ? devices 
@@ -175,7 +159,7 @@ export default function Home() {
         setNewProjectName("");
         setSelectedMacAddresses(new Set());
         // Refresh both devices and projects after a project mutation.
-        await fetchDashboard();
+        await refreshDashboard();
       }
     } catch {
       alert("Failed to assign project");
@@ -198,8 +182,8 @@ export default function Home() {
       });
       if (res.ok) {
         setSelectedMacAddresses(new Set());
-        // Refresh devices only; the project list did not change.
-        await fetchDevices();
+        // Refresh the dashboard after deleting devices.
+        await refreshDashboard();
       } else {
         alert("Failed to delete devices");
       }
@@ -296,8 +280,20 @@ export default function Home() {
       {/* MAIN CONTENT */}
       <div className="main-content">
         <header style={{ marginBottom: '2rem', borderBottom: '2px solid var(--neon-green)', paddingBottom: '1rem' }}>
-          <h1 className="glow-text main-title">{'// ESP OTA COMMAND CENTER'}</h1>
-          <p>SYSTEM STATUS: <span style={{color: 'var(--neon-green)'}}>ACTIVE</span> | {selectedProject} ({filteredDevices.length} DEVICES)</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div>
+              <h1 className="glow-text main-title">{'// ESP OTA COMMAND CENTER'}</h1>
+              <p>SYSTEM STATUS: <span style={{color: 'var(--neon-green)'}}>ACTIVE</span> | {selectedProject} ({filteredDevices.length} DEVICES)</p>
+            </div>
+            <button
+              className="btn-hacker btn-hacker-blue"
+              onClick={() => void refreshDashboard()}
+              disabled={refreshing}
+              style={{ padding: '0.7rem 1rem', fontWeight: 'bold' }}
+            >
+              {refreshing ? 'REFRESHING...' : 'REFRESH'}
+            </button>
+          </div>
         </header>
 
         <div className="dashboard-grid">

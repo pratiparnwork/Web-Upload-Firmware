@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 
 export interface Device {
   hostname: string;
@@ -12,6 +12,11 @@ export interface Device {
   hasUpdate: boolean;
   status: 'Online' | 'Offline' | 'Flashing';
   projectName: string;
+}
+
+interface DashboardData {
+  devices: Device[];
+  projects: string[];
 }
 
 export default function Home() {
@@ -30,25 +35,68 @@ export default function Home() {
 
   const [newProjectName, setNewProjectName] = useState("");
 
-  // Poll devices & projects
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const response = await fetch('/api/dashboard', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Dashboard request failed: ${response.status}`);
+
+      const data: DashboardData = await response.json();
+      setDevices(data.devices);
+      setProjects(data.projects);
+    } catch (error) {
+      console.error("Failed to fetch dashboard data", error);
+    }
+  }, []);
+
+  const fetchDevices = useCallback(async () => {
+    try {
+      const response = await fetch('/api/devices', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Devices request failed: ${response.status}`);
+
+      setDevices(await response.json());
+    } catch (error) {
+      console.error("Failed to fetch devices", error);
+    }
+  }, []);
+
+  // Load the dashboard once when the user starts using it, then poll devices only.
   useEffect(() => {
-    const fetchInfo = async () => {
-      try {
-        const [devRes, projRes] = await Promise.all([
-          fetch('/api/devices'),
-          fetch('/api/projects')
-        ]);
-        if (devRes.ok) setDevices(await devRes.json());
-        if (projRes.ok) setProjects(await projRes.json());
-      } catch (err) {
-        console.error("Failed to fetch data", err);
+    if (!isLoggedIn) return;
+
+    let interval: ReturnType<typeof setInterval> | undefined;
+
+    const startPolling = () => {
+      if (document.visibilityState !== 'visible' || interval) return;
+
+      void fetchDashboard();
+      interval = setInterval(() => {
+        void fetchDevices();
+      }, 3000);
+    };
+
+    const stopPolling = () => {
+      if (!interval) return;
+
+      clearInterval(interval);
+      interval = undefined;
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        startPolling();
+      } else {
+        stopPolling();
       }
     };
-    
-    fetchInfo();
-    const interval = setInterval(fetchInfo, 3000);
-    return () => clearInterval(interval);
-  }, []);
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchDashboard, fetchDevices, isLoggedIn]);
 
   const filteredDevices = selectedProject === 'ALL DEVICES' 
     ? devices 
@@ -126,10 +174,8 @@ export default function Home() {
       if (res.ok) {
         setNewProjectName("");
         setSelectedMacAddresses(new Set());
-        // force immediate refresh
-        const [devRes, projRes] = await Promise.all([fetch('/api/devices'), fetch('/api/projects')]);
-        if (devRes.ok) setDevices(await devRes.json());
-        if (projRes.ok) setProjects(await projRes.json());
+        // Refresh both devices and projects after a project mutation.
+        await fetchDashboard();
       }
     } catch {
       alert("Failed to assign project");
@@ -152,9 +198,8 @@ export default function Home() {
       });
       if (res.ok) {
         setSelectedMacAddresses(new Set());
-        // force immediate refresh
-        const devRes = await fetch('/api/devices');
-        if (devRes.ok) setDevices(await devRes.json());
+        // Refresh devices only; the project list did not change.
+        await fetchDevices();
       } else {
         alert("Failed to delete devices");
       }
